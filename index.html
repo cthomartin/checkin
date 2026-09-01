@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Check-In System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7fafc; }
+    </style>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div id="app" class="w-full max-w-lg bg-white shadow-xl rounded-xl p-6 md:p-8">
+        <h1 class="text-3xl font-bold text-gray-800 text-center mb-6">QR Code Check-In</h1>
+
+        <!-- Google Sheet Data & API URL Setup -->
+        <div class="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <label class="block text-sm font-bold text-gray-700 mb-2">
+                Google Sheet Source (Minus last 6 chars)
+            </label>
+            <div class="flex space-x-2 mb-3">
+                <input type="url" id="baseUrl" placeholder="e.g., https://docs.google.com/.../export?format=csv&id="
+                       class="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm">
+                <input type="text" id="urlSuffix" maxlength="6" placeholder="6 chars"
+                       class="w-24 p-2 border border-gray-300 rounded-lg text-center font-mono focus:ring-blue-500 focus:border-blue-500 text-sm">
+            </div>
+            
+            <label for="appsScriptUrl" class="block text-sm font-bold text-gray-700 mb-2">
+                Apps Script POST URL
+            </label>
+            <input type="url" id="appsScriptUrl" placeholder="https://script.google.com/macros/s/..."
+                   class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm mb-3"
+                   value="https://script.google.com/macros/s/AKfycbwj31CzqW3daa6BwDbXm_kPqIX6yvEX1GlGip5xVdtVjMgmGSuYZ5KgTML_DBjhVqGK0g/exec">
+                   
+            <button id="loadEmailsBtn" class="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg shadow-md hover:bg-indigo-700 transition duration-200">
+                Verify & Load Emails
+            </button>
+            <p id="loadStatus" class="mt-2 text-sm text-center font-medium text-gray-500">Emails not loaded yet.</p>
+        </div>
+
+        <!-- Scanning Area -->
+        <div id="scanner-container" class="border-4 border-dashed border-gray-300 rounded-xl p-4 mb-6 transition-all duration-300" style="min-height: 250px;">
+            <div id="reader" style="width: 100%;"></div>
+        </div>
+
+        <!-- Status and Results -->
+        <div id="status-area" class="text-center">
+            <p id="message" class="text-lg text-gray-600 font-semibold">Ready to scan...</p>
+        </div>
+
+        <!-- Submission Success/Error Indicator -->
+        <div id="result-indicator" class="mt-6 hidden transition-opacity duration-500">
+            <div class="flex flex-col items-center">
+                <svg id="success-icon" class="w-24 h-24 text-green-500 hidden animate-bounce" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <svg id="error-icon" class="w-24 h-24 text-red-500 hidden animate-bounce" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <button id="reset-button" class="mt-4 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-200">
+                    Scan New QR
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const app = document.getElementById('app');
+        const readerId = 'reader';
+        const appsScriptUrlInput = document.getElementById('appsScriptUrl');
+        const baseUrlInput = document.getElementById('baseUrl');
+        const urlSuffixInput = document.getElementById('urlSuffix');
+        const loadEmailsBtn = document.getElementById('loadEmailsBtn');
+        const loadStatus = document.getElementById('loadStatus');
+        const messageDisplay = document.getElementById('message');
+        const resultIndicator = document.getElementById('result-indicator');
+        const successIcon = document.getElementById('success-icon');
+        const errorIcon = document.getElementById('error-icon');
+        const resetButton = document.getElementById('reset-button');
+        
+        let html5QrCode;
+        let validEmails = []; // Replaces the hardcoded myArray
+
+        function createFormData(email, timestamp) {
+            const params = new URLSearchParams();
+            params.append('email', email);
+            params.append('timestamp', timestamp);
+            return params.toString();
+        }
+
+        function showSuccess(email) {
+            messageDisplay.textContent = `Success! Recorded check-in for: ${email}`;
+            successIcon.classList.remove('hidden');
+            errorIcon.classList.add('hidden');
+            resultIndicator.classList.remove('hidden');
+            document.getElementById('scanner-container').classList.add('hidden');
+        }
+
+        function showNotFound(email) {
+            messageDisplay.textContent = `Record not found for: ${email}`;
+            errorIcon.classList.remove('hidden');
+            successIcon.classList.add('hidden');
+            resultIndicator.classList.remove('hidden');
+            document.getElementById('scanner-container').classList.add('hidden');
+        }
+
+        function showError(msg) {
+            messageDisplay.textContent = msg;
+            errorIcon.classList.remove('hidden');
+            successIcon.classList.add('hidden');
+            resultIndicator.classList.remove('hidden');
+            document.getElementById('scanner-container').classList.add('hidden');
+        }
+
+        function resetScanner() {
+            resultIndicator.classList.add('hidden');
+            successIcon.classList.add('hidden');
+            errorIcon.classList.add('hidden');
+            document.getElementById('scanner-container').classList.remove('hidden');
+            messageDisplay.textContent = 'Ready to scan...';
+            startScanner();
+        }
+
+        // Fetch emails from combined Google Sheet URL
+        loadEmailsBtn.addEventListener('click', async () => {
+            const suffix = urlSuffixInput.value.trim();
+            if (suffix.length !== 6) {
+                loadStatus.textContent = 'Error: Please enter exactly 6 characters.';
+                loadStatus.className = 'mt-2 text-sm text-center font-medium text-red-500';
+                return;
+            }
+
+            const fullUrl = baseUrlInput.value.trim() + suffix;
+            loadStatus.textContent = 'Loading emails...';
+            loadStatus.className = 'mt-2 text-sm text-center font-medium text-blue-500';
+
+            try {
+                const response = await fetch(fullUrl);
+                if (!response.ok) throw new Error('Network response error');
+                
+                const csvData = await response.text();
+                
+                // Parse basic CSV, extract emails, remove duplicates & empty spaces
+                validEmails = csvData.split(/\r?\n/)
+                    .flatMap(row => row.split(','))
+                    .map(e => e.trim().toLowerCase())
+                    .filter(e => e.includes('@')); // simple email validation
+
+                loadStatus.textContent = `Success: Loaded ${validEmails.length} emails.`;
+                loadStatus.className = 'mt-2 text-sm text-center font-medium text-green-600';
+            } catch (error) {
+                console.error("Fetch Error:", error);
+                loadStatus.textContent = 'Error fetching sheet. Ensure the link is a public CSV export URL.';
+                loadStatus.className = 'mt-2 text-sm text-center font-medium text-red-500';
+            }
+        });
+
+        async function onScanSuccess(decodedText) {
+            if (validEmails.length === 0) {
+                alert("Please load the email list from the Google Sheet first!");
+                return;
+            }
+
+            html5QrCode.stop().catch(err => console.error("Failed to stop scanner: ", err));
+
+            const email = decodedText.trim();
+            const appsScriptUrl = appsScriptUrlInput.value.trim();
+
+            if (!appsScriptUrl.startsWith('http')) {
+                showError('Error: Please enter a valid Apps Script POST URL.');
+                return;
+            }
+
+            messageDisplay.textContent = `Scanned: ${email}. Submitting data...`;
+
+            try {
+                const currentTime = new Date().toLocaleString();
+                const formData = createFormData(email, currentTime);
+
+                await fetch(appsScriptUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData,
+                });
+
+                // Validate against dynamically loaded sheet data
+                if (validEmails.includes(email.toLowerCase())) {
+                    showSuccess(email);
+                } else {
+                    showNotFound(email);
+                }
+
+            } catch (error) {
+                console.error("Submission failed:", error);
+                showError(`Network Error: Could not reach the server.`);
+            }
+        }
+
+        function startScanner() {
+            if (!html5QrCode) html5QrCode = new Html5Qrcode(readerId);
+            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, () => {})
+            .catch(err => {
+                messageDisplay.textContent = 'Error: Could not start camera. Make sure you grant permissions.';
+                document.getElementById('scanner-container').classList.add('hidden');
+            });
+        }
+
+        window.onload = () => {
+            resetButton.addEventListener('click', resetScanner);
+            startScanner();
+        };
+    </script>
+</body>
+</html>
