@@ -3,12 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Check-In System V1.1</title>
+    <title>QR Check-In System</title>
+    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Inter Font -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f7fafc; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7fafc;
+        }
     </style>
+    <!-- Load html5-qrcode library for scanning -->
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
@@ -16,29 +22,16 @@
     <div id="app" class="w-full max-w-lg bg-white shadow-xl rounded-xl p-6 md:p-8">
         <h1 class="text-3xl font-bold text-gray-800 text-center mb-6">QR Code Check-In</h1>
 
-        <!-- Google Sheet Data & API URL Setup -->
-        <div class="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-            <label class="block text-sm font-bold text-gray-700 mb-2">
-                Google Sheet Source (Minus last 6 chars)
-            </label>
-            <div class="flex space-x-2 mb-3">
-                <input type="url" id="baseUrl" placeholder="e.g., https://docs.google.com/.../export?format=csv&id="
-                       class="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm" value="https://docs.google.com/spreadsheets/d/e/2PACX-1vToGKACZ0HEv8cS2kFpISixvPwciZs6ekpL9yJV6AVL1iKvYQUTPU9ZtxezOeGs_p_ownmYJ0MK566R/pub?gid=0&single=true&output=csv">
-                <input type="text" id="urlSuffix" maxlength="6" placeholder="6 chars"
-                       class="w-24 p-2 border border-gray-300 rounded-lg text-center font-mono focus:ring-blue-500 focus:border-blue-500 text-sm">
-            </div>
-            
-            <label for="appsScriptUrl" class="block text-sm font-bold text-gray-700 mb-2">
-                Apps Script POST URL
+        <!-- API URL Setup -->
+        <div class="mb-6">
+            <label for="appsScriptUrl" class="block text-sm font-medium text-gray-700 mb-2">
+                Version 7
             </label>
             <input type="url" id="appsScriptUrl" placeholder="https://script.google.com/macros/s/..."
-                   class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm mb-3"
-                   value="https://script.google.com/macros/s/AKfycbwj31CzqW3daa6BwDbXm_kPqIX6yvEX1GlGip5xVdtVjMgmGSuYZ5KgTML_DBjhVqGK0g/exec">
-                   
-            <button id="loadEmailsBtn" class="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg shadow-md hover:bg-indigo-700 transition duration-200">
-                Verify & Load Emails
-            </button>
-            <p id="loadStatus" class="mt-2 text-sm text-center font-medium text-gray-500">Emails not loaded yet.</p>
+                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out"
+                   value="https://script.google.com/macros/s/AKfycbwj31CzqW3daa6BwDbXm_kPqIX6yvEX1GlGip5xVdtVjMgmGSuYZ5KgTML_DBjhVqGK0g/exec"
+            >
+            
         </div>
 
         <!-- Scanning Area -->
@@ -54,36 +47,40 @@
         <!-- Submission Success/Error Indicator -->
         <div id="result-indicator" class="mt-6 hidden transition-opacity duration-500">
             <div class="flex flex-col items-center">
+                <!-- SVG Green Tick (Success) -->
                 <svg id="success-icon" class="w-24 h-24 text-green-500 hidden animate-bounce" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
+                <!-- SVG Red X (Error) -->
                 <svg id="error-icon" class="w-24 h-24 text-red-500 hidden animate-bounce" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <button id="reset-button" class="mt-4 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-200">
+                <button id="reset-button" class="mt-4 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-200 focus:outline-none focus:ring-4 focus:ring-blue-500/50">
                     Scan New QR
                 </button>
             </div>
         </div>
+
     </div>
 
     <script>
         const app = document.getElementById('app');
         const readerId = 'reader';
         const appsScriptUrlInput = document.getElementById('appsScriptUrl');
-        const baseUrlInput = document.getElementById('baseUrl');
-        const urlSuffixInput = document.getElementById('urlSuffix');
-        const loadEmailsBtn = document.getElementById('loadEmailsBtn');
-        const loadStatus = document.getElementById('loadStatus');
         const messageDisplay = document.getElementById('message');
         const resultIndicator = document.getElementById('result-indicator');
         const successIcon = document.getElementById('success-icon');
         const errorIcon = document.getElementById('error-icon');
         const resetButton = document.getElementById('reset-button');
-        
+        const urlStatus = document.getElementById('url-status');
         let html5QrCode;
-        let validEmails = []; // Replaces the hardcoded myArray
 
+        /**
+         * Converts a string to a URLSearchParams object for POST request.
+         * @param {string} email The email address from the QR code.
+         * @param {string} timestamp The current time string.
+         * @returns {string} URL encoded string.
+         */
         function createFormData(email, timestamp) {
             const params = new URLSearchParams();
             params.append('email', email);
@@ -91,6 +88,9 @@
             return params.toString();
         }
 
+        /**
+         * Displays the success state with the green tick.
+         */
         function showSuccess(email) {
             messageDisplay.textContent = `Success! Recorded check-in for: ${email}`;
             successIcon.classList.remove('hidden');
@@ -100,13 +100,16 @@
         }
 
         function showNotFound(email) {
-            messageDisplay.textContent = `Record not found for: ${email}`;
+            messageDisplay.textContent = `Recorded not found for: ${email}`;
             errorIcon.classList.remove('hidden');
             successIcon.classList.add('hidden');
             resultIndicator.classList.remove('hidden');
             document.getElementById('scanner-container').classList.add('hidden');
         }
 
+        /**
+         * Displays the error state with the red X.
+         */
         function showError(msg) {
             messageDisplay.textContent = msg;
             errorIcon.classList.remove('hidden');
@@ -115,105 +118,545 @@
             document.getElementById('scanner-container').classList.add('hidden');
         }
 
+        /**
+         * Resets the application state to start scanning again.
+         */
         function resetScanner() {
+            // Clear result state
             resultIndicator.classList.add('hidden');
             successIcon.classList.add('hidden');
             errorIcon.classList.add('hidden');
             document.getElementById('scanner-container').classList.remove('hidden');
             messageDisplay.textContent = 'Ready to scan...';
+            
+            // Start the QR scanner
             startScanner();
         }
 
-        // Fetch emails from combined Google Sheet URL
-        loadEmailsBtn.addEventListener('click', async () => {
-            const suffix = urlSuffixInput.value.trim();
-            if (suffix.length !== 6) {
-                loadStatus.textContent = 'Error: Please enter exactly 6 characters.';
-                loadStatus.className = 'mt-2 text-sm text-center font-medium text-red-500';
-                return;
-            }
-
-            const fullUrl = baseUrlInput.value.trim() + suffix;
-            loadStatus.textContent = 'Loading emails...';
-            loadStatus.className = 'mt-2 text-sm text-center font-medium text-blue-500';
-
-            try {
-                const response = await fetch(fullUrl);
-                if (!response.ok) throw new Error('Network response error');
-                
-                const csvData = await response.text();
-                
-                // Parse basic CSV, extract emails, remove duplicates & empty spaces
-                validEmails = csvData.split(/\r?\n/)
-                    .flatMap(row => row.split(','))
-                    .map(e => e.trim().toLowerCase())
-                    .filter(e => e.includes('@')); // simple email validation
-
-                loadStatus.textContent = `Success: Loaded ${validEmails.length} emails.`;
-                loadStatus.className = 'mt-2 text-sm text-center font-medium text-green-600';
-            } catch (error) {
-                console.error("Fetch Error:", error);
-                loadStatus.textContent = 'Error fetching sheet. Ensure the link is a public CSV export URL.';
-                loadStatus.className = 'mt-2 text-sm text-center font-medium text-red-500';
-            }
-        });
-
+        /**
+         * Handles the successful scan of a QR code.
+         * @param {string} decodedText The content of the QR code (expected to be an email).
+         */
         async function onScanSuccess(decodedText) {
-            if (validEmails.length === 0) {
-                alert("Please load the email list from the Google Sheet first!");
-                return;
-            }
-
-            html5QrCode.stop().catch(err => console.error("Failed to stop scanner: ", err));
+            html5QrCode.stop().then(() => {
+                // Scanner stopped successfully
+            }).catch(err => {
+                console.error("Failed to stop scanner: ", err);
+            });
 
             const email = decodedText.trim();
             const appsScriptUrl = appsScriptUrlInput.value.trim();
 
             if (!appsScriptUrl.startsWith('http')) {
-                showError('Error: Please enter a valid Apps Script POST URL.');
+                showError('Error: Please enter a valid Google Apps Script Web App URL first.');
                 return;
             }
 
             messageDisplay.textContent = `Scanned: ${email}. Submitting data...`;
 
             try {
+                // Get current timestamp in a readable format
                 const currentTime = new Date().toLocaleString();
+
                 const formData = createFormData(email, currentTime);
 
-                await fetch(appsScriptUrl, {
+                // --- API Call to Google Sheet via Apps Script ---
+                const response = await fetch(appsScriptUrl, {
                     method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    mode: 'no-cors', // Required for Google Apps Script Web App calls
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
                     body: formData,
                 });
 
-                // Validate against dynamically loaded sheet data
-                if (validEmails.includes(email.toLowerCase())) {
+                const myArray = ["homartin@gmail.com", "homartin.ict@gmail.com","a@b.com","c@d.com", "1@2.com", "3@4.com","1127@abc.com","leunghclouis@yahoo.com.hk",
+  "gigiy7351@yahoo.com.hk",
+  "Eva82501314@gmail.com",
+  "lhygrace@gmail.com",
+  "jessicayfj@hotmail.com",
+  "wendy_yip915@yahoo.com.hk",
+  "carol_063083@yahoo.com.hk",
+  "CLL2LING@GMAIL.COM",
+  "TobyKo@Gmail.com",
+  "ting.rita@yahoo.com",
+  "cocotray@hotmail.com",
+  "kkpooh1983@yahoo.com.hk",
+  "joe823@gmail.com",
+  "fongkaleuk@gmail.com",
+  "irenemak12@gmail.com",
+  "simon93430427@yahoo.com.hk",
+  "love_tackey@yahoo.com.hk",
+  "davy10090@gmail.com",
+  "dickson2481@yahoo.com.hk",
+  "ruqingxiao1160@gmail.com",
+  "gracema110119@gmail.com",
+  "sandywong0227@gmail.com",
+  "kittenkty@yahoo.com.hk",
+  "iyewow@gmail.com",
+  "tcretrace@yahoo.com.hk",
+  "xiajunlan1982@hotmail.com",
+  "zoechung168@gmail.com",
+  "sarahsit@yahoo.com.hk",
+  "iamtink18@gmail.com",
+  "clifffan@hotmail.com",
+  "tigerfung2000@yahoo.com.hk",
+  "adacheung1218@gmail.com",
+  "johnyik01@gmail.com",
+  "terenceftw@gmail.com",
+  "pig_pighome@yahoo.com.hk",
+  "marco_wkwong@yahoo.com.hk",
+  "wschong2006@yahoo.com.hk",
+  "gloriali331@gmail.com",
+  "jammi_chow@hotmail.com",
+  "chloelawyy@gmail.com",
+  "cethsaa@gmail.com",
+  "ronimiffy@yahoo.com.hk",
+  "cb_dumbo@hotmail.com",
+  "mok.charles@gmail.com",
+  "kirstiecheng@gmail.com",
+  "danicehu@gmail.com",
+  "maureenyeung@hotmail.com",
+  "samicheng828@gmail.com",
+  "itakange@gmail.com",
+  "jelly2216@yahoo.com.hk",
+  "chevorho@gmail.com",
+  "wlp@g.tpompspc.edu.hk",
+  "wuhuini55@gmail.com",
+  "ludanru000@163.com",
+  "pcheung826@gmail.com",
+  "emmywky@yahoo.com.hk",
+  "karachow2016@gmail.com",
+  "yangyinjuns@163.com",
+  "adacbd624@gmail.com",
+  "heidyyeung@yahoo.com",
+  "euniceyypyyp@gmail.com",
+  "smilelok66@gmail.com",
+  "lowelllo56@yahoo.com.hk",
+  "abbyhoiki@gmail.com",
+  "leeangel831@yahoo.com.hk",
+  "angela.au.hk@gmail.com",
+  "garychin428@gmail.com",
+  "hk113delanda@gmail.com",
+  "olekwok@gmail.com",
+  "iristsangc@ymail.com",
+  "281786039@qq.com",
+  "kitshun_chan@yahoo.com.hk",
+  "chenjiao.joy@gmail.com",
+  "yanchoi100cafe@gmail.com",
+  "alvinlui512@gmail.com",
+  "sglsm1628@yahoo.com.hk",
+  "cyber_0826@yahoo.com.hk",
+  "littlegirlqq@gmail.com",
+  "yleung526@gmail.com",
+  "aliu214@gmail.com",
+  "kwok9836@gmail.com",
+  "adeline_ma@hotmail.com",
+  "gachan222@gmail.com",
+  "roselle1809@hotmail.com",
+  "graceko369@gmail.com",
+  "ksproltd@gmail.com",
+  "alexisfong1@gmail.com",
+  "wllau_jun22@hotmail.com",
+  "cancan0521@hotmail.com",
+  "tracywwy@yahoo.com",
+  "m51886959@gmail.com",
+  "cherryyuen0730@gmail.com",
+  "yh3219@gmail.com",
+  "cmtang2526@gmail.com",
+  "lu51731170@gmail.com",
+  "sandee_lam@hotmail.com",
+  "kathylo2011@hotmail.com",
+  "409384112@qq.com",
+  "ktsang051682@gmail.com",
+  "laiyingshek1127@yahoo.com.hk",
+  "Maggie.870204@gmail.com",
+  "hs2021054@skhhsps.edu.hk",
+  "carriek1031@gmail.com",
+  "loverstar@gmail.com",
+  "melanieckan@yahoo.com",
+  "qimei01171989@gmail.com",
+  "mikideng1985@gmail.com",
+  "myronmui@gmail.com",
+  "carollinglai2013@yahoo.com",
+  "carolchang928@gmail.com",
+  "luihelen@gmail.com",
+  "yan.dy319@yahoo.com.hk",
+  "flora2103@yahoo.com.hk",
+  "aikolo1029@yahoo.com.hk",
+  "linglingwong2021@gmail.com",
+  "yupingtse@gmail.com",
+  "leechin.to@gmail.com",
+  "songchung@yahoo.com",
+  "waishan1209@yahoo.com.hk",
+  "cathyli113@yahoo.com.hk",
+  "canmytam@yahoo.com.hk",
+  "pennyskyhunter@gmail.com",
+  "wendy-xiuhong@hotmail.com",
+  "taming247@gmail.com",
+  "clock12150@gmail.com",
+  "emmanini2025@gmail.com",
+  "evans@lam-li.com",
+  "waikan8888@gmail.com",
+  "carriekawai829@gmail.com",
+  "sauman329@gmail.com",
+  "miussy.sy@gmail.com",
+  "tonymak36@gmail.com",
+  "davidippw@yahoo.com.hk",
+  "p_kuku522@yahoo.com.hk",
+  "cutie_bobo514@hotmail.com",
+  "jopat102@hotmail.com",
+  "rachelcheng0118@gmail.com",
+  "Manibe1122@yahoo.com.hk",
+  "eby.eby@163.com",
+  "cmting2409@gmail.com",
+  "ada_mak3388@hotmail.com",
+  "zoewong@gmail.com",
+  "jjhubeihk@gmail.com",
+  "minna6no1tabo@hotmail.com",
+  "kathywsk@gmail.com",
+  "yyee1119@hotmail.com",
+  "kying127@yahoo.com.hk",
+  "norris_yuyu@hotmail.com",
+  "feicherry@gmail.com",
+  "claudiahcf@msn.com",
+  "wingwychan@gmail.com",
+  "fannyyeung260@gmail.com",
+  "lingsquare23@hotmail.com",
+  "rubylee415@hotmail.com",
+  "laiyeepig@yahoo.com",
+  "pollyllc@yahoo.com.hk",
+  "byurib@gmail.com",
+  "kathy_0413@yahoo.com.hk",
+  "chan75332@gmail.com",
+  "wan.hoiching@yahoo.com.hk",
+  "wong558@yahoo.com.hk",
+  "catherinelam1124@yahoo.com.hk",
+  "crystal713power@gmail.com",
+  "chi_kuen0112@yahoo.com.hk",
+  "jela.y29@gmail.com",
+  "jessfroghui@gmail.com",
+  "lamting333@gmail.com",
+  "devlinlee2015@gmail.com",
+  "andyhui2233@gmail.com",
+  "elyncorredor@gmail.com",
+  "lieyuntek@yahoo.com.hk",
+  "nickandwendy1982@gmail.com",
+  "jcwish8@gmail.com",
+  "annietangoy@yahoo.com.hk",
+  "wwterryl@gmail.com",
+  "wear.tag@gmail.com",
+  "aryan920@hotmail.com",
+  "wcvincci@yahoo.com",
+  "kkaadaa1@gmail.com",
+  "chanmeowmeow622@gmail.com",
+  "lijianbin198698@gmail.com",
+  "carolckk630@gmail.com",
+  "airjordan3160@gmail.com",
+  "florencemui911@yahoo.com.hk",
+  "choruslai@hotmail.com",
+  "natalieip0809@gmail.com",
+  "xyxlo2630@gmail.com",
+  "mgavalee@gmail.com",
+  "windiho@gmail.com",
+  "chestella@gmail.com",
+  "isaleclo@gmail.com",
+  "paperkan@yahoo.com.hk",
+  "Pakyi523@gmail.com",
+  "patrick_618@yahoo.com.hk",
+  "waikayvicky@hotmail.com",
+  "yukfai713@hotmail.com",
+  "chongfung520.cf@gmail.com",
+  "yyjenelle@gmail.com",
+  "zoemiruku@gmail.com",
+  "tongwa2013@yahoo.com.hk",
+  "sllojess@yahoo.com.hk",
+  "liviatsui831@gmail.com",
+  "nicolefu70@gmail.com",
+  "alicechan0524@gmail.com",
+  "catherine_cky@yahoo.com.hk",
+  "kimmihyk@gmail.com",
+  "lulu_ivory@yahoo.com.hk",
+  "siuyee311@hotmail.com",
+  "cathy6825@gmail.com",
+  "carlosyu1031@gmail.com",
+  "ccherylchung@yahoo.com.hk",
+  "luscalaw@outlook.com",
+  "dadapig1121@yahoo.com.hk",
+  "lamchowai89@gmail.com",
+  "heidi12032000@gmail.com",
+  "CW00370@163.com",
+  "andyfung1031@yahoo.com.hk",
+  "heavensong1122@gmail.com",
+  "schanst@gmail.com",
+  "yukfai713@gmail.com",
+  "edith0613@gmail.com",
+  "ho.rainbow@hotmail.com",
+  "shellyfung725@gmail.com",
+  "ckp222bobo@hotmail.com",
+  "choi_kelvin@hotmail.com",
+  "tracyling@gmail.com",
+  "leeclgm@gmail.com",
+  "yanfang2013@yahoo.com",
+  "chanhung1@gmail.com",
+  "pang.howard@gmail.com",
+  "samsonsinpl@gmail.com",
+  "caryzheng1113@gmail.com",
+  "fung_12_02@yahoo.com.hk",
+  "lsandy518@gmail.com",
+  "carenhohmk@gmail.com",
+  "wingcheng1218@gmail.com",
+  "lydiazhou118@gmail.com",
+  "winnie00238@yahoo.com.hk",
+  "setokayu@gmail.com",
+  "alexleung4321@yahoo.com",
+  "jade.wong520@gmail.com",
+  "wanyuqi1988@icloud.com",
+  "724848469@qq.com",
+  "selenayuan520@gmail.com",
+  "floriakoo@yahoo.com.hk",
+  "lo.debbie@gmail.com",
+  "mcpang03@gmail.com",
+  "186001567@qq.com",
+  "sandy428@gmail.com",
+  "jolinwu@163.com",
+  "raymondshum84@yahoo.com.hk",
+  "eicabs1@gmail.com",
+  "theresachowfk@gmail.com",
+  "by2011319@yahoo.com.hk",
+  "yipkapo913@gmail.com",
+  "shilingling.moon@gmail.com",
+  "wongjoanne1818@gmail.com",
+  "egawh@yahoo.com.hk",
+  "vickychan453959422@gmail.com",
+  "tse323@gmail.com",
+  "ningwang1516@gmail.com",
+  "aaronckf@gmail.com",
+  "68569622@qq.com",
+  "mei515518@gmail.com",
+  "fanlitamhoikin@gmail.com",
+  "calockb@yahoo.com",
+  "ali379329243@gmail.com",
+  "kannischeung@gmail.com",
+  "ashu608@hotmail.com",
+  "msannaleung@gmail.com",
+  "sa_man6@hotmail.com",
+  "vianlee9@yahoo.com.hk",
+  "rayiky@gmail.com",
+  "z1357@hotmail.com",
+  "bigday0720@yahoo.com.hk",
+  "qiyuping919@gmail.com",
+  "keilam.2288@yahoo.com.hk",
+  "agathalauhy@gmail.com",
+  "tampatty@gmail.com",
+  "2carmen.li@cuhk.edu.hk",
+  "alingjoanna@yahoo.com",
+  "peggie0210@gmail.com",
+  "chak_yuen@yahoo.com.hk",
+  "kwokkayan.winnie@gmail.com",
+  "yinguanwen2015@gmail.com",
+  "hoihoi0417@yahoo.com.hk",
+  "yflui@yahoo.com",
+  "lokchan79@hotmail.com",
+  "hellolittlerabbit@gmail.com",
+  "mic_mi0903@yahoo.com.hk",
+  "62275270floracheung@gmail.com",
+  "277978743@qq.com",
+  "1285630326@qq.com",
+  "leungkaty18@gmail.com",
+  "ckongmail@yahoo.com.hk",
+  "rachael2099@hotmail.com",
+  "ckongemail@gmail.com",
+  "yuhauling@yahoo.com.hk",
+  "25295348@qq.com",
+  "gracesze@gmail.com",
+  "qiunikko@gmail.com",
+  "casskaling@gmail.com",
+  "tongtongeric@gmail.com",
+  "1653690385@qq.com",
+  "christling23@gmail.com",
+  "carolynhuang1030@yahoo.com.hk",
+  "helennghl@hotmail.com",
+  "cheungpk@hksrl.edu.hk",
+  "%5231859@qq.com",
+  "joby1021@yahoo.com",
+  "candy8448@yahoo.com.hk",
+  "990760322@qq.com",
+  "kkkso04010@hotmail.com",
+  "creamsit@yahoo.com.hk",
+  "foonyeema@gmail.com",
+  "sosaulaam0428@gmail.com",
+  "pengtingting@yahoo.com",
+  "moniquelawst@gmail.com",
+  "shanshan2188@gmail.com",
+  "rainy820@yahoo.com.hk",
+  "mandymanyuen@yahoo.com.hk",
+  "crystal.li752@gmail.com",
+  "cocolee519@gmail.com",
+  "nokkocheng@gmail.com",
+  "cw_au1227@yahoo.com.hk",
+  "kywan@vtc.edu.hk",
+  "chefung@gmail.com",
+  "appleroy23@yahoo.com.hk",
+  "yickchr.g@myyahoo.com",
+  "coey.leung@ymail.com",
+  "hazel0806@yahoo.com.hk",
+  "jolli_li@yahoo.com.hk",
+  "ec.ccwcheryl@gmail.com",
+  "alanpigworld@hotmail.com",
+  "howardkong@hotmail.com",
+  "bluesaki@gmail.com",
+  "spyspy329@gmail.com",
+  "hy_ho112984@yahoo.com.hk",
+  "rainbow_chai613@yahoo.com.hk",
+  "858662862@qq.com",
+  "yee813dd@yahoo.com.hk",
+  "edith_eded@yahoo.com.hk",
+  "soyyukki2014@gmail.com",
+  "heyuwilliam@gmail.com",
+  "wongtingkin@hotmail.com",
+  "yeungstephanir@yahoo.com.hk",
+  "yukimok1234@gmail.com",
+  "sharongramy@gmail.com",
+  "zeroman1101@gmail.com",
+  "wancici824@gmail.com",
+  "moyulingmo@gmail.com",
+  "emilyzeng5203@gmail.com",
+  "susukichau@yahoo.com.hk",
+  "monpigfamily@gmail.com",
+  "hoiman_ng@yahoo.com.hk",
+  "13764299043@163.com",
+  "sumcary@yahoo.com.hk",
+  "porscheaurora@gmail.com",
+  "littletwinstartree@gmail.com",
+  "blam8698@gmail.com",
+  "pinky_pinky1314@yahoo.com.hk",
+  "569793401@qq.com",
+  "glady.koon@gmail.com",
+  "suetchuikoon@gmail.com",
+  "acetsang@yahoo.com.hk",
+  "birdchan@gmail.com",
+  "Ling726@gmail.com",
+  "amanda_gei@hotmail.com",
+  "davidseric@hotmail.com",
+  "vicking1216@yahoo.com.hk",
+  "frederickkhlo@gmail.com",
+  "mandyip88@hotmail.com",
+  "tobe722@yahoo.com.hk",
+  "iamsandyyu@hotmail.com",
+  "beckychan1984@yahoo.com.hk",
+  "littlecats@yahoo.com.hk",
+  "elyttyc@yahoo.com.hk",
+  "wanglian315@yahoo.com",
+  "carven121890@gmail.com",
+  "snowychan1212@gmail.com",
+  "Freshon2002@gmail.com",
+  "bonnie_wym@yahoo.com.hk",
+  "fion711@hotmail.com",
+  "kennyfyc.work@gmail.com",
+  "llianhua95@gmail.com",
+  "lsying2015@gmail.com",
+  "c51772678@gmail.com",
+  "cckzoey@gmail.com",
+  "tobymanvivi@yahoo.com.hk",
+  "huawei-0817@163.com",
+  "yuki281281@yahoo.com.hk",
+  "511615129@qq.com",
+  "fongfongfong2412@gmail.com",
+  "yoyochan158@yahoo.com",
+  "S3BL97@yahoo.com.hk",
+  "kl3676983@gmail.com",
+  "kylie.hong@hotmail.com",
+  "yungccck@gmail.com",
+  "clmvanessa@gmail.com",
+  "leoso1020@gmail.com",
+  "chiyan.cheng@ul.com",
+  "loggiepoon@gmail.com",
+  "peggypiano@hotmail.com.hk",
+  "eerobert@gmail.com",
+  "koonsun@gmail.com",
+  "caesar850416@gmail.com",
+  "monica20081014@yahoo.com.hk",
+  "chansinyee601@yahoo.com",
+  "xrey.lau@gmail.com",
+"yeung_liu@yahoo.com.hk","yeungstephanie@yahoo.com.hk"
+];
+
+                if (myArray.includes(email)) {
                     showSuccess(email);
                 } else {
                     showNotFound(email);
-                }
+                 }
+                // Since we use 'no-cors' for Apps Script, we can't reliably read the response body or status.
+                // If the fetch call succeeds without a network error, we assume the Apps Script ran successfully.
+                // The Apps Script is designed to return a specific JSON success object, but 'no-cors' prevents us from checking it.
+                // For a successful POST fetch (even with 'no-cors'), we show success.
+                // showError(response.status);
+                /*switch (response.result) {
+                    case 'success':
+                        showSuccess(email);
+                        break;
+                    case 'notfound':
+                        showNotFound(email);
+                        break;
+                }*/
 
             } catch (error) {
                 console.error("Submission failed:", error);
-                showError(`Network Error: Could not reach the server.`);
+                showError(`Network Error: Could not reach the server. Check URL and connection.`);
             }
         }
 
+        /**
+         * Initializes and starts the QR code scanner.
+         */
         function startScanner() {
-            if (!html5QrCode) html5QrCode = new Html5Qrcode(readerId);
-            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
-            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, () => {})
+            // Check if the HTML5 QR Code object is initialized, if not, create it.
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode(readerId);
+            }
+            
+            // Configuration for the scanner
+            const config = {
+                fps: 10,
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0,
+                // prefer front camera if available
+                facingMode: { ideal: "environment" } 
+            };
+            
+            // Start scanning
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, (errorMessage) => {
+                // Do not log minor scanning errors to keep console clean
+            })
             .catch(err => {
                 messageDisplay.textContent = 'Error: Could not start camera. Make sure you grant permissions.';
+                console.error('Camera start error:', err);
+                // Hide the scanner container if camera fails
                 document.getElementById('scanner-container').classList.add('hidden');
             });
         }
 
+        // --- Event Listeners and Initialization ---
+
         window.onload = () => {
             resetButton.addEventListener('click', resetScanner);
+            appsScriptUrlInput.addEventListener('input', () => {
+                if (appsScriptUrlInput.value.startsWith('http')) {
+                    urlStatus.textContent = "URL accepted. Ready to scan!";
+                    urlStatus.classList.remove('text-red-500');
+                    urlStatus.classList.add('text-green-600');
+                } else {
+                    urlStatus.textContent = "(See 'apps_script_backend_instructions.md' for setup guide.)";
+                    urlStatus.classList.remove('text-green-600');
+                    urlStatus.classList.add('text-red-500');
+                }
+            });
+
+            // Initial start of the scanner
             startScanner();
         };
+
     </script>
 </body>
 </html>
